@@ -1,0 +1,79 @@
+version: "3.9"
+services:
+  postgresql-db:
+    container_name: sample-project-db
+    image: postgres:14-alpine
+    environment:
+      - POSTGRES_USER=${PGSQL_USER}
+      - POSTGRES_PASSWORD=${PGSQL_PASSWORD}
+      - POSTGRES_DB=${PGSQL_DATABASE}
+      - POSTGRES_HOST_AUTH_METHOD=trust
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    command: postgres -c listen_addresses='*'
+    ports:
+      - "5432:5432"
+    expose:
+      - 5432
+    networks:
+      my-bridge-001:
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "db_prod"]
+      interval: 20s
+      timeout: 20s
+      retries: 6
+      start_period: 60s
+
+  django-app:
+    container_name: sample-project
+    image: patyinn/sample-project
+    env_file:
+      - .env
+    build:
+      context: ./sampleProject
+    expose:
+      - 8082
+    volumes:
+      - /tmp/log:/tmp
+      - ./sampleProject/static:/my_django/static
+      - ./sampleProject/media:/my_django/media
+    command: bash start.sh
+    environment:
+        - LANG=C.UTF-8
+    links:
+      - postgresql-db
+    depends_on:
+      postgresql-db:
+         condition: service_healthy
+    restart: always
+    networks:
+      my-bridge-001:
+
+  nginx:
+    container_name: sample-nginx
+    build:
+      context: ./nginx
+    ports:
+        - "8082:80"
+    environment:
+       - LANG=C.UTF-8
+    volumes: 
+      - ./sampleProject/static:/home/django_proj/static
+      - ./sampleProject/media:/home/django_proj/media
+      - ./log:/var/log/ngnix
+    links:
+      - django-app
+    depends_on:
+      django-app:
+         condition: service_started
+    restart: always
+    networks:
+      my-bridge-001:
+
+networks:
+  my-bridge-001:
+
+volumes:
+  db_data:
+  pgadmin-data:
